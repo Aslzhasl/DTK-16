@@ -1,19 +1,26 @@
 package database
 
 import (
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
+	"database/sql"
 	"log"
 	"os"
-	"violation-type-service/internal/model"
+
+	_ "github.com/lib/pq"
 )
 
-func ConnectDB() *gorm.DB {
+func ConnectDB() *sql.DB {
 	dsn := os.Getenv("DATABASE_URL")
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatal("Database connection failed: ", err)
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is not set in .env")
 	}
-	db.AutoMigrate(&model.ViolationType{})
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		log.Fatal("Failed to open DB: ", err)
+	}
+	if err := db.Ping(); err != nil {
+		log.Fatal("DB unreachable: ", err)
+	}
+	log.Println("Connected to PostgreSQL")
 	return db
 }

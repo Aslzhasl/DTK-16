@@ -1,83 +1,89 @@
 package handler
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
-	"violation-type-service/internal/model"
-	"violation-type-service/internal/service"
+
 	"violation-type-service/internal/excel"
+	"violation-type-service/internal/model"
 	"violation-type-service/internal/repository"
-	"os"
+	"violation-type-service/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
-type ViolationHandler struct {
-	service service.ViolationService
-	repo    repository.ViolationRepository
+type ViolationTypeHandler struct {
+	service service.ViolationTypeService
+	repo    repository.ViolationTypeRepository
 }
 
-func NewViolationHandler(s service.ViolationService, r repository.ViolationRepository) *ViolationHandler {
-	return &ViolationHandler{service: s, repo: r}
+func NewViolationTypeHandler(s service.ViolationTypeService, r repository.ViolationTypeRepository) *ViolationTypeHandler {
+	return &ViolationTypeHandler{service: s, repo: r}
 }
 
-func (h *ViolationHandler) GetAll(c *gin.Context) {
-	list, err := h.service.GetAll()
+func (h *ViolationTypeHandler) GetAll(c *gin.Context) {
+	data, err := h.service.GetAll()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, list)
+	c.JSON(http.StatusOK, data)
 }
 
-func (h *ViolationHandler) Create(c *gin.Context) {
-	var input model.ViolationType
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	res, err := h.service.Create(input)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, res)
-}
-
-func (h *ViolationHandler) Update(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	var input model.ViolationType
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	res, err := h.service.Update(uint(id), input)
+func (h *ViolationTypeHandler) GetByID(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	data, err := h.service.GetByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, res)
+	c.JSON(http.StatusOK, data)
 }
 
-func (h *ViolationHandler) Delete(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	err := h.service.Delete(uint(id))
+func (h *ViolationTypeHandler) Create(c *gin.Context) {
+	var req model.ViolationType
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	id, err := h.service.Create(req)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func (h *ViolationTypeHandler) Update(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var req model.ViolationType
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	err := h.service.Update(id, req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+func (h *ViolationTypeHandler) Delete(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	err := h.service.Delete(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
-
-func (h *ViolationHandler) ImportExcel(c *gin.Context) {
-	filePath := c.Query("path")
-	if filePath == "" {
-		filePath = "./violations.xlsx"
+func (h *ViolationTypeHandler) ImportExcel(c *gin.Context) {
+	path := c.Query("path")
+	if path == "" {
+		path = "./data.xlsx"
 	}
-	if _, err := os.Stat(filePath); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл не найден"})
-		return
-	}
-	err := excel.ImportFromExcel(filePath, h.repo)
+	err := excel.ImportFromExcel(path, h.repo)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

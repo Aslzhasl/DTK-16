@@ -1,7 +1,7 @@
 package model
 
 type ViolationType struct {
-	ID        uint   `gorm:"primaryKey" json:"id"`
-	Name      string `json:"name" binding:"required"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
 	OtherInfo string `json:"otherInfo,omitempty"`
 }

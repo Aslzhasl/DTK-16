@@ -1,25 +1,27 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"violation-type-service/internal/auth"
 	"violation-type-service/internal/handler"
-	"violation-type-service/internal/repository"
-	"violation-type-service/internal/service"
+	"violation-type-service/internal/middleware"
+
+	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(db *gorm.DB) *gin.Engine {
+func SetupRouter(h *handler.ViolationTypeHandler) *gin.Engine {
 	r := gin.Default()
 
-	repo := repository.NewViolationRepository(db)
-	service := service.NewViolationService(repo)
-	handler := handler.NewViolationHandler(service, repo)
-
-	r.GET("/api/violations", handler.GetAll)
-	r.POST("/api/violations", handler.Create)
-	r.PUT("/api/violations/:id", handler.Update)
-	r.DELETE("/api/violations/:id", handler.Delete)
-	r.POST("/api/violations/import", handler.ImportExcel)
+	authClient := auth.NewJavaAuthClient("http://localhost:8081")
+	adminRoutes := r.Group("/api/violation-types")
+	adminRoutes.Use(middleware.JWTMiddleware(authClient, "ROLE_ADMIN"))
+	{
+		adminRoutes.GET("", h.GetAll)
+		adminRoutes.GET(":id", h.GetByID)
+		adminRoutes.POST("", h.Create)
+		adminRoutes.PUT(":id", h.Update)
+		adminRoutes.DELETE(":id", h.Delete)
+		adminRoutes.POST("/import", h.ImportExcel)
+	}
 
 	return r
 }

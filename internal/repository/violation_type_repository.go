@@ -1,46 +1,89 @@
 package repository
 
 import (
-	"gorm.io/gorm"
+	"database/sql"
+	"errors"
 	"violation-type-service/internal/model"
+
+	sq "github.com/Masterminds/squirrel"
 )
 
-type violationRepo struct {
-	db *gorm.DB
+type violationTypeRepository struct {
+	db         *sql.DB
+	sqlBuilder sq.StatementBuilderType
 }
 
-func NewViolationRepository(db *gorm.DB) ViolationRepository {
-	return &violationRepo{db: db}
+func NewViolationTypeRepository(db *sql.DB) ViolationTypeRepository {
+	return &violationTypeRepository{
+		db:         db,
+		sqlBuilder: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+	}
 }
 
-func (r *violationRepo) FindAll() ([]model.ViolationType, error) {
+func (r *violationTypeRepository) FindAll() ([]model.ViolationType, error) {
+	query := r.sqlBuilder.Select("id", "name", "other_info").From("violation_types")
+	rows, err := query.RunWith(r.db).Query()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var list []model.ViolationType
-	res := r.db.Find(&list)
-	return list, res.Error
-}
-
-func (r *violationRepo) Create(v model.ViolationType) (model.ViolationType, error) {
-	res := r.db.Create(&v)
-	return v, res.Error
-}
-
-func (r *violationRepo) Update(id uint, v model.ViolationType) (model.ViolationType, error) {
-	var existing model.ViolationType
-	if err := r.db.First(&existing, id).Error; err != nil {
-		return model.ViolationType{}, err
+	for rows.Next() {
+		var v model.ViolationType
+		if err := rows.Scan(&v.ID, &v.Name, &v.OtherInfo); err != nil {
+			return nil, err
+		}
+		list = append(list, v)
 	}
-	existing.Name = v.Name
-	existing.OtherInfo = v.OtherInfo
-	if err := r.db.Save(&existing).Error; err != nil {
-		return model.ViolationType{}, err
+	return list, nil
+}
+
+func (r *violationTypeRepository) FindByID(id int64) (model.ViolationType, error) {
+	query := r.sqlBuilder.Select("id", "name", "other_info").From("violation_types").Where(sq.Eq{"id": id})
+	row := query.RunWith(r.db).QueryRow()
+
+	var v model.ViolationType
+	if err := row.Scan(&v.ID, &v.Name, &v.OtherInfo); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return v, errors.New("not found")
+		}
+		return v, err
 	}
-	return existing, nil
+	return v, nil
 }
 
-func (r *violationRepo) Delete(id uint) error {
-	return r.db.Delete(&model.ViolationType{}, id).Error
+func (r *violationTypeRepository) Create(v model.ViolationType) (int64, error) {
+	query := r.sqlBuilder.Insert("violation_types").Columns("name", "other_info").
+		Values(v.Name, v.OtherInfo).
+		Suffix("RETURNING id")
+
+	var id int64
+	err := query.RunWith(r.db).QueryRow().Scan(&id)
+	return id, err
 }
 
-func (r *violationRepo) BulkInsert(list []model.ViolationType) error {
-	return r.db.Create(&list).Error
+func (r *violationTypeRepository) Update(id int64, v model.ViolationType) error {
+	query := r.sqlBuilder.Update("violation_types").
+		Set("name", v.Name).
+		Set("other_info", v.OtherInfo).
+		Where(sq.Eq{"id": id})
+
+	_, err := query.RunWith(r.db).Exec()
+	return err
+}
+
+func (r *violationTypeRepository) Delete(id int64) error {
+	query := r.sqlBuilder.Delete("violation_types").Where(sq.Eq{"id": id})
+	_, err := query.RunWith(r.db).Exec()
+	return err
+}
+
+func (r *violationTypeRepository) BulkInsert(list []model.ViolationType) error {
+	q := r.sqlBuilder.Insert("violation_types").Columns("name", "other_info")
+	for _, v := range list {
+		q = q.Values(v.Name, v.OtherInfo)
+	}
+	_, err := q.RunWith(r.db).Exec()
+	return err
 }

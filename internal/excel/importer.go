@@ -1,12 +1,13 @@
 package excel
 
 import (
-	"github.com/xuri/excelize/v2"
 	"violation-type-service/internal/model"
 	"violation-type-service/internal/repository"
+
+	"github.com/xuri/excelize/v2"
 )
 
-func ImportFromExcel(path string, repo repository.ViolationRepository) error {
+func ImportFromExcel(path string, repo repository.ViolationTypeRepository) error {
 	f, err := excelize.OpenFile(path)
 	if err != nil {
 		return err
