@@ -2,12 +2,12 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -22,50 +22,86 @@ type UserInfo struct {
 	Role    string `json:"role"`
 }
 
-func ValidateJWT(tokenString string) error {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return fmt.Errorf("JWT_SECRET is not set")
-	}
+func JWTWithAuth(authClient AuthClient, requiredRole string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 1. Получение токена
+			tokenString, err := extractToken(r)
+			if err != nil {
+				respondError(w, http.StatusUnauthorized, err.Error())
+				return
+			}
 
-	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			// 2. Валидация JWT
+			_, err = validateJWT(tokenString)
+			if err != nil {
+				respondError(w, http.StatusUnauthorized, "Invalid token")
+				return
+			}
+
+			// 3. Проверка пользователя в сервисе аутентификации
+			userInfo, err := authClient.VerifyUser(tokenString)
+			if err != nil {
+				respondError(w, http.StatusUnauthorized, "User verification failed")
+				return
+			}
+
+			// 4. Проверка роли
+			if userInfo.Role != "ROLE_ADMIN" {
+				respondError(w, http.StatusForbidden, "Insufficient privileges")
+				return
+			}
+
+			// 5. Проверка, что токен действителен
+			if !userInfo.Valid {
+				respondError(w, http.StatusUnauthorized, "Token is not valid: "+userInfo.Message)
+				return
+			}
+
+			// 6. Добавление информации в контекст
+			ctx := context.WithValue(r.Context(), "user", userInfo)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func validateJWT(tokenString string) (jwt.MapClaims, error) {
+	secret := os.Getenv("JWT_SECRET")
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
 	})
+
 	if err != nil || !token.Valid {
-		return fmt.Errorf("invalid token: %v", err)
+		return nil, fmt.Errorf("invalid token")
 	}
-	return nil
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+
+	return claims, nil
 }
 
-func JWTMiddleware(authClient AuthClient, requiredRole string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid token"})
-			return
-		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-
-		if err := ValidateJWT(token); err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			return
-		}
-
-		userInfo, err := authClient.VerifyUser(token)
-		if err != nil || !userInfo.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User verification failed"})
-			return
-		}
-		if userInfo.Role != requiredRole {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
-			return
-		}
-
-		ctx := context.WithValue(c.Request.Context(), "user", userInfo)
-		c.Request = c.Request.WithContext(ctx)
-		c.Next()
+func extractToken(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("authorization header required")
 	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return "", fmt.Errorf("invalid authorization header format")
+	}
+
+	return parts[1], nil
+}
+
+func respondError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

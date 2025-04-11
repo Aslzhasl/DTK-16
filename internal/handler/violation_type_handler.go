@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -9,7 +10,7 @@ import (
 	"violation-type-service/internal/repository"
 	"violation-type-service/internal/service"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 )
 
 type ViolationTypeHandler struct {
@@ -21,72 +22,78 @@ func NewViolationTypeHandler(s service.ViolationTypeService, r repository.Violat
 	return &ViolationTypeHandler{service: s, repo: r}
 }
 
-func (h *ViolationTypeHandler) GetAll(c *gin.Context) {
+func (h *ViolationTypeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	data, err := h.service.GetAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
 }
 
-func (h *ViolationTypeHandler) GetByID(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+func (h *ViolationTypeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	id, _ := strconv.ParseInt(idStr, 10, 64)
 	data, err := h.service.GetByID(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
 }
 
-func (h *ViolationTypeHandler) Create(c *gin.Context) {
+func (h *ViolationTypeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req model.ViolationType
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	id, err := h.service.Create(req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": id})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]int64{"id": id})
 }
 
-func (h *ViolationTypeHandler) Update(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+func (h *ViolationTypeHandler) Update(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	id, _ := strconv.ParseInt(idStr, 10, 64)
 	var req model.ViolationType
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	err := h.service.Update(id, req)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.service.Update(id, req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	c.Status(http.StatusOK)
+	w.WriteHeader(http.StatusOK)
 }
 
-func (h *ViolationTypeHandler) Delete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	err := h.service.Delete(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+func (h *ViolationTypeHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+	if err := h.service.Delete(id); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
-func (h *ViolationTypeHandler) ImportExcel(c *gin.Context) {
-	path := c.Query("path")
+
+func (h *ViolationTypeHandler) ImportExcel(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
 	if path == "" {
 		path = "./data.xlsx"
 	}
-	err := excel.ImportFromExcel(path, h.repo)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := excel.ImportFromExcel(path, h.repo); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Импорт завершен"})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Импорт завершен"})
 }
