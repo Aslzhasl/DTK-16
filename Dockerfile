@@ -1,32 +1,22 @@
-# Стадия сборки
-FROM golang:1.20 AS builder
+FROM golang:1.23.4
 
 WORKDIR /app
 
-# Копируем go.mod и go.sum
-COPY go.mod go.sum ./
+# Загрузка зависимостей
+COPY go.mod ./
+COPY go.sum ./
 RUN go mod download
 
-# Копируем исходный код
+# Копирование проекта
 COPY . .
 
-# Сборка бинарника
-RUN go build -o main ./cmd/main.go
+# Скрипт ожидания базы
+#COPY wait-for-postgres.sh /wait-for-postgres.sh
+#RUN chmod +x /wait-for-postgres.sh
 
-# Стадия запуска
-FROM debian:bullseye-slim
+# Сборка
+RUN go build -o app ./cmd
 
-# Создаём директорию приложения
-WORKDIR /app
+EXPOSE 8082
 
-# Копируем бинарник из стадии builder
-COPY --from=builder /app/main .
-
-# Копируем .env файл
-COPY .env .
-
-# Открываем порт
-EXPOSE 8080
-
-# Запуск приложения
-CMD ["./main"]
+CMD [ "./app"]

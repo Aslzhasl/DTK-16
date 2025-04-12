@@ -9,7 +9,7 @@ import (
 )
 
 func InitDB() *sql.DB {
-	dbURL := os.Getenv("DATABASE_URL")
+	dbURL := os.Getenv("DB_DSN")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL not set in .env")
 	}

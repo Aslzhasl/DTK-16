@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: guilt_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  violation-type-service:
+    build: .
+    ports:
+      - "8082:8082"
+    depends_on:
+      - postgres
+    restart: always    
+    environment:
+      - DB_DSN=host=postgres user=postgres password=1234 dbname=guilt_db port=5432 sslmode=disable
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - JWT_SECRET=my-32-character-ultra-secure-and-ultra-long-secret
+      - AUTH_SERVICE_URL=http://10.202.5.168:8081 
+
+volumes:
+  pg_data:

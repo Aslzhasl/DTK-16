@@ -16,19 +16,15 @@ import (
 )
 
 func main() {
-	// Загрузка переменных окружения из .env
 	config.LoadEnv()
 
-	// Подключение к БД
 	db := database.InitDB()
 
-	// Создание зависимостей
 	repo := repository.NewViolationTypeRepository(db)
 	svc := service.NewViolationTypeService(repo)
 	h := handler.NewViolationTypeHandler(svc, repo)
-	authClient := auth.NewJavaAuthClient("http://172.20.10.4:8081") // укажи актуальный IP
+	authClient := auth.NewJavaAuthClient("http://172.20.10.4:8081")
 
-	// Настройка роутера
 	router := mux.NewRouter()
 	router.Use(middleware.LoggingMiddleware)
 
@@ -41,9 +37,8 @@ func main() {
 	adminRouter.Handle("/{id}", middleware.JWTAdminOnly(http.HandlerFunc(h.Delete))).Methods(http.MethodDelete)
 	adminRouter.Handle("/import", middleware.JWTAdminOnly(http.HandlerFunc(h.ImportExcel))).Methods(http.MethodPost)
 
-	// Запуск сервера
 	server := &http.Server{
-		Addr:    ":8082", // или любой другой порт
+		Addr:    ":8082",
 		Handler: router,
 	}
 
